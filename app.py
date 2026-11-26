@@ -98,17 +98,27 @@ def load_jobs(query, location):
     response.raise_for_status()
     data = response.json()
     jobs = []
-    for j in (data.get("jobs") or [])[:30]:
+    seen = set()  # FIX: remove duplicate listings (same title + company + url)
+    for j in (data.get("jobs") or []):
+        title = j.get("title") or "Untitled role"
+        company = j.get("company_name") or "Company not specified"
+        url = j.get("url") or ""
+        dedupe_key = (title.strip().lower(), company.strip().lower(), url)
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
         jobs.append({
-            "title": j.get("title") or "Untitled role",
-            "company": j.get("company_name") or "Company not specified",
+            "title": title,
+            "company": company,
             "location": j.get("candidate_required_location") or "Remote",
             "type": j.get("job_type") or "Not specified",
             "description": j.get("description") or "",
             "posted": (j.get("publication_date") or "")[:10],
-            "url": j.get("url") or "",
+            "url": url,
             "source": "Remotive"
         })
+        if len(jobs) >= 30:
+            break
     return jobs
 
 tab_jobs, tab_resume, tab_ai = st.tabs(["🔎 Live Jobs", "📄 Resume Analysis", "✦ AI Career Assistant"])
@@ -134,15 +144,15 @@ with tab_jobs:
     jobs = st.session_state.get("jobs", [])
     if jobs:
         st.success(f"{len(jobs)} listing(s) returned by Remotive.")
-        for j in jobs:
+        for i, j in enumerate(jobs):  # FIX: index makes every widget key unique
             with st.container(border=True):
                 st.markdown(f"### {j['title']}")
                 st.markdown(f"**{j['company']}** · {j['location']} · {j['type']}")
                 if j["posted"]: st.caption(f"Posted: {j['posted']} · Source: {j['source']}")
                 if j["url"]: st.link_button("View / Apply ↗", j["url"])
                 with st.expander("Job description"):
-                    st.markdown(j["description"][:12000] or "Description not provided.")
-                if st.button("Prepare application for this job", key="prepare_"+str(j["title"])+str(j["company"])):
+                    st.markdown(j["description"][:12000] or "Description not provided.", unsafe_allow_html=False)
+                if st.button("Prepare application for this job", key=f"prepare_{i}"):  # FIX: unique key
                     st.session_state["selected_job"] = j
                     st.info("Selected. Open the AI Career Assistant tab to draft application materials.")
     elif search:
